@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI Agent · وكيل ذكي (Browser)</title>
+<style>
+  :root {
+    --bg:#0d1117; --panel:#161b22; --panel-2:#1c2333; --border:#2a3240;
+    --text:#e6edf3; --muted:#8b98a9; --accent:#6366f1; --accent-2:#22d3ee;
+    --user:#2563eb; --tool:#1f2a3a; --ok:#34d399; --warn:#fbbf24; --err:#f87171;
+  }
+  * { box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    margin:0; font-family:"Segoe UI",system-ui,-apple-system,"Noto Sans Arabic",sans-serif;
+    background:radial-gradient(1200px 600px at 80% -10%, #1b2440 0%, var(--bg) 60%);
+    color:var(--text); height:100vh; display:flex; overflow:hidden;
+  }
+  /* Sidebar */
+  aside {
+    width:260px; background:rgba(13,17,23,.6); border-inline-end:1px solid var(--border);
+    display:flex; flex-direction:column; flex-shrink:0; backdrop-filter:blur(8px);
+  }
+  .side-head { padding:16px; display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--border); }
+  .logo { width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent-2));
+          display:grid;place-items:center;font-size:19px;box-shadow:0 4px 18px rgba(99,102,241,.4); }
+  .side-head h1 { font-size:15px; margin:0; } .side-head .sub{font-size:11px;color:var(--muted);}
+  .new-btn { margin:12px; padding:10px; border-radius:10px; border:1px dashed var(--border);
+    background:var(--panel-2); color:var(--text); cursor:pointer; font-size:13px; }
+  .new-btn:hover{ border-color:var(--accent); }
+  .convos { flex:1; overflow-y:auto; padding:0 8px; }
+  .convo { padding:9px 11px; border-radius:9px; font-size:13px; cursor:pointer; color:var(--muted);
+    display:flex; align-items:center; gap:8px; margin-bottom:3px; }
+  .convo:hover{ background:var(--panel); color:var(--text);} .convo.active{ background:var(--panel); color:var(--text);}
+  .convo .title{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .convo .del{ opacity:0; font-size:12px; } .convo:hover .del{ opacity:.7; }
+  .side-foot { padding:12px; border-top:1px solid var(--border); display:flex; flex-direction:column; gap:8px; }
+  /* Main */
+  .main { flex:1; display:flex; flex-direction:column; min-width:0; }
+  header { padding:12px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center;
+    gap:10px; background:rgba(13,17,23,.6); backdrop-filter:blur(8px); }
+  header .spacer{ flex:1; }
+  select,.toggle,.iconbtn { background:var(--panel-2); color:var(--text); border:1px solid var(--border);
+    border-radius:9px; padding:7px 10px; font-size:13px; cursor:pointer; }
+  .toggle{ display:inline-flex; align-items:center; gap:6px; }
+  .badge{ font-size:11px; padding:5px 10px; border-radius:20px; background:var(--panel-2);
+    border:1px solid var(--border); color:var(--muted); }
+  .badge .dot{ color:var(--err); } .badge.ready .dot{ color:var(--ok); }
+  main.chat { flex:1; overflow-y:auto; padding:22px; display:flex; flex-direction:column; gap:16px; }
+  .inner{ max-width:840px; width:100%; margin:0 auto; display:flex; flex-direction:column; gap:16px; }
+  .msg{ display:flex; gap:11px; align-items:flex-start; animation:fade .25s ease; }
+  @keyframes fade{ from{opacity:0;transform:translateY(6px);} to{opacity:1;transform:none;} }
+  .msg .avatar{ width:32px;height:32px;border-radius:9px;flex-shrink:0;display:grid;place-items:center;font-size:16px; }
+  .msg.user{ flex-direction:row-reverse; } .msg.user .avatar{ background:var(--user); }
+  .msg.bot .avatar{ background:linear-gradient(135deg,var(--accent),var(--accent-2)); }
+  .bubble{ background:var(--panel); border:1px solid var(--border); padding:12px 15px; border-radius:14px;
+    line-height:1.7; word-wrap:break-word; max-width:80%; font-size:14.5px; }
+  .msg.user .bubble{ background:var(--user); border-color:transparent; }
+  .bubble p{ margin:0 0 10px; } .bubble p:last-child{ margin-bottom:0; }
+  .bubble pre{ background:#0a0e14; border:1px solid var(--border); border-radius:9px; padding:11px;
+    overflow-x:auto; font-family:ui-monospace,monospace; font-size:12.5px; direction:ltr; text-align:left; }
+  .bubble code{ background:#0a0e14; padding:1px 5px; border-radius:5px; font-family:ui-monospace,monospace; font-size:12.5px; }
+  .bubble pre code{ background:none; padding:0; }
+  .bubble ul,.bubble ol{ margin:6px 0; padding-inline-start:22px; }
+  .trace{ margin-top:9px; font-size:12.5px; }
+  .trace details{ background:var(--tool); border:1px solid var(--border); border-radius:10px; padding:6px 11px; margin-top:6px; }
+  .trace summary{ cursor:pointer; color:var(--accent-2); }
+  .trace pre{ white-space:pre-wrap; margin:7px 0 2px; font-family:ui-monospace,monospace; font-size:12px; direction:ltr; text-align:left; }
+  footer{ border-top:1px solid var(--border); padding:13px 18px; background:rgba(13,17,23,.6); }
+  .composer{ max-width:840px; margin:0 auto; display:flex; gap:10px; align-items:flex-end; }
+  textarea{ flex:1; resize:none; background:var(--panel); color:var(--text); border:1px solid var(--border);
+    border-radius:13px; padding:12px 14px; font-size:14.5px; font-family:inherit; max-height:170px; line-height:1.5; }
+  textarea:focus{ outline:none; border-color:var(--accent); }
+  button.send{ background:linear-gradient(135deg,var(--accent),var(--accent-2)); color:#fff; border:none;
+    border-radius:13px; padding:12px 18px; font-size:14px; cursor:pointer; font-weight:600; }
+  button.send:disabled{ opacity:.5; cursor:not-allowed; }
+  .hint{ text-align:center; color:var(--muted); font-size:11px; margin-top:8px; }
+  .circle-btn{ background:var(--panel-2); color:var(--text); border:1px solid var(--border);
+    border-radius:50%; width:42px; height:42px; font-size:18px; cursor:pointer; flex-shrink:0;
+    display:grid; place-items:center; transition:.15s; }
+  .circle-btn:hover{ border-color:var(--accent); }
+  .circle-btn.recording{ background:var(--err); border-color:var(--err); color:#fff; animation:pulse 1s infinite; }
+  @keyframes pulse{ 0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,.5);} 50%{box-shadow:0 0 0 7px rgba(248,113,113,0);} }
+  .attach-bar{ max-width:840px; margin:0 auto 8px; display:flex; gap:8px; flex-wrap:wrap; }
+  .attach-chip{ display:flex; align-items:center; gap:7px; background:var(--panel-2);
+    border:1px solid var(--border); border-radius:9px; padding:5px 9px; font-size:12px; }
+  .attach-chip img{ width:30px; height:30px; border-radius:5px; object-fit:cover; }
+  .attach-chip .x{ cursor:pointer; color:var(--muted); }
+  .attach-chip .x:hover{ color:var(--err); }
+  .msg .bubble img.att{ max-width:220px; border-radius:9px; margin-top:8px; display:block; }
+  .speak-btn{ background:none; border:none; cursor:pointer; color:var(--accent-2); font-size:13px; margin-top:6px; padding:0; }
+  .typing span{ display:inline-block; width:7px;height:7px;border-radius:50%;background:var(--muted);
+    animation:blink 1.2s infinite both; margin:0 2px; }
+  .typing span:nth-child(2){animation-delay:.2s;} .typing span:nth-child(3){animation-delay:.4s;}
+  @keyframes blink{0%,80%,100%{opacity:.2;}40%{opacity:1;}}
+  .welcome{ text-align:center; color:var(--muted); margin-top:7vh; }
+  .welcome h2{ color:var(--text); font-weight:600; }
+  .chips{ display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:18px; }
+  .chip{ background:var(--panel-2); border:1px solid var(--border); color:var(--text); padding:9px 14px;
+    border-radius:20px; font-size:13px; cursor:pointer; } .chip:hover{ border-color:var(--accent); }
+  /* Modal */
+  .overlay{ position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center;
+    justify-content:center; z-index:50; backdrop-filter:blur(3px); }
+  .overlay.open{ display:flex; }
+  .modal{ background:var(--panel); border:1px solid var(--border); border-radius:16px; width:min(520px,92vw);
+    max-height:88vh; overflow-y:auto; padding:22px; }
+  .modal h3{ margin:0 0 4px; } .modal .desc{ color:var(--muted); font-size:13px; margin-bottom:16px; }
+  .field{ margin-bottom:15px; } .field label{ display:block; font-size:13px; margin-bottom:6px; color:var(--muted); }
+  .field input,.field select{ width:100%; background:var(--panel-2); color:var(--text); border:1px solid var(--border);
+    border-radius:9px; padding:10px; font-size:13px; }
+  .modal-actions{ display:flex; gap:10px; justify-content:flex-end; margin-top:18px; }
+  .btn-primary{ background:linear-gradient(135deg,var(--accent),var(--accent-2)); color:#fff; border:none;
+    border-radius:9px; padding:10px 18px; cursor:pointer; font-weight:600; }
+  .btn-ghost{ background:var(--panel-2); color:var(--text); border:1px solid var(--border);
+    border-radius:9px; padding:10px 18px; cursor:pointer; }
+  .note{ font-size:12px; color:var(--warn); background:rgba(251,191,36,.08); border:1px solid rgba(251,191,36,.25);
+    border-radius:9px; padding:9px 11px; margin-top:6px; line-height:1.5; }
+  @media (max-width:680px){ aside{ display:none; } }
+</style>
+</head>
+<body>
+  <!-- Sidebar -->
+  <aside>
+    <div class="side-head">
+      <div class="logo">🤖</div>
+      <div><h1>AI Agent</h1><div class="sub">وكيل ذكي · Browser</div></div>
+    </div>
+    <button class="new-btn" id="newChat">➕ محادثة جديدة / New chat</button>
+    <div class="convos" id="convos"></div>
+    <div class="side-foot">
+      <button class="iconbtn" id="openSettings">⚙️ الإعدادات / Settings</button>
+      <button class="iconbtn" id="exportBtn">⬇️ تصدير المحادثة / Export</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main">
+    <header>
+      <span class="badge" id="statusBadge"><span class="dot">●</span> <span id="statusText">…</span></span>
+      <div class="spacer"></div>
+      <select id="providerSel" title="المزوّد / Provider">
+        <option value="openai">OpenAI</option>
+        <option value="anthropic">Anthropic (Claude)</option>
+        <option value="ollama">Ollama (محلي)</option>
+        <option value="demo">Demo (بدون مفتاح)</option>
+      </select>
+      <label class="toggle"><input type="checkbox" id="toolsToggle" checked /> 🛠️ أدوات</label>
+      <label class="toggle" title="ينطق ردود الوكيل بصوت"><input type="checkbox" id="speakToggle" /> 🔊 نطق</label>
+    </header>
+
+    <main class="chat" id="chat">
+      <div class="inner" id="inner">
+        <div class="welcome" id="welcome">
+          <h2>أهلاً 👋 أنا وكيلك الذكي في المتصفح</h2>
+          <p>اسألني أي حاجة — أحسب، أنفّذ كود، أكتب/أقرأ ملفات، وأجيب من النت.<br>
+             Ask me anything — math, code, files, and web answers.</p>
+          <div class="chips" id="chips">
+            <div class="chip">ابحث عن آخر أخبار الذكاء الاصطناعي</div>
+            <div class="chip">احسب لي جذر 2024 زائد 15%</div>
+            <div class="chip">اكتب كود جافاسكربت يطبع الأعداد الأولية لـ 50</div>
+            <div class="chip">What can you do?</div>
+          </div>
+          <p style="margin-top:14px;font-size:12.5px">🎤 سجّل صوتك · 📎 ارفع صورة أو ملف · 🔊 فعّل النطق من فوق</p>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div id="attachBar" class="attach-bar"></div>
+      <div class="composer">
+        <input type="file" id="fileInput" multiple style="display:none"
+               accept="image/*,.txt,.md,.csv,.json,.js,.py,.html,.css,.xml,.log" />
+        <button class="circle-btn" id="attachBtn" title="إرفاق ملف/صورة">📎</button>
+        <button class="circle-btn" id="micBtn" title="تسجيل صوت">🎤</button>
+        <textarea id="input" rows="1" placeholder="اكتب رسالتك…  /  Type your message…"></textarea>
+        <button class="send" id="sendBtn">إرسال ➤</button>
+      </div>
+      <div class="hint">Enter للإرسال · 🎤 صوت · 📎 ملفات/صور · مفتاحك يُحفظ في متصفحك فقط 🔒</div>
+    </footer>
+  </div>
+
+  <!-- Settings modal -->
+  <div class="overlay" id="overlay">
+    <div class="modal">
+      <h3>⚙️ الإعدادات / Settings</h3>
+      <div class="desc">بياناتك (المفتاح/المحادثات) تتخزّن في <b>localStorage</b> داخل متصفحك فقط — مش بتروح لأي سيرفر تاني.</div>
+
+      <div class="field">
+        <label>المزوّد الافتراضي / Default provider</label>
+        <select id="setProvider">
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic (Claude)</option>
+          <option value="ollama">Ollama (محلي)</option>
+          <option value="demo">Demo (بدون مفتاح)</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>OpenAI API Key</label>
+        <input type="password" id="setOpenAIKey" placeholder="sk-..." />
+      </div>
+      <div class="field">
+        <label>OpenAI Model</label>
+        <input type="text" id="setOpenAIModel" placeholder="gpt-4o-mini" />
+      </div>
+
+      <div class="field">
+        <label>Anthropic API Key</label>
+        <input type="password" id="setAnthKey" placeholder="sk-ant-..." />
+      </div>
+      <div class="field">
+        <label>Anthropic Model</label>
+        <input type="text" id="setAnthModel" placeholder="claude-3-5-sonnet-20241022" />
+      </div>
+
+      <div class="field">
+        <label>Ollama Base URL</label>
+        <input type="text" id="setOllamaUrl" placeholder="http://localhost:11434" />
+      </div>
+      <div class="field">
+        <label>Ollama Model</label>
+        <input type="text" id="setOllamaModel" placeholder="llama3.1" />
+      </div>
+
+      <div class="note">
+        💡 أدوات النت (بحث/جلب صفحات) والفويس بـ Whisper بتشتغل <b>بدون قيود</b> لما تفتح الواجهة
+        من خلال السيرفر (محليًا <code>localhost:8000/web/</code> أو بعد النشر أونلاين — شوف DEPLOY.md).
+        الحاسبة، الكود، والملفات شغالة دايمًا. التعرّف الصوتي الفوري مجاني في Chrome.
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-ghost" id="closeSettings">إلغاء</button>
+        <button class="btn-primary" id="saveSettings">حفظ / Save</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+"use strict";
+
+/* =========================================================================
+   Settings (persisted in localStorage)
+   ========================================================================= */
+const DEFAULTS = {
+  provider: "demo",
+  openaiKey: "", openaiModel: "gpt-4o-mini",
+  anthKey: "", anthModel: "claude-3-5-sonnet-20241022",
+  ollamaUrl: "http://localhost:11434", ollamaModel: "llama3.1",
+};
+function loadSettings(){ try{ return {...DEFAULTS, ...JSON.parse(localStorage.getItem("agent_settings")||"{}")}; }catch{ return {...DEFAULTS}; } }
+function saveSettings(s){ localStorage.setItem("agent_settings", JSON.stringify(s)); }
+let settings = loadSettings();
+
+/* =========================================================================
+   Conversation store (persisted)
+   ========================================================================= */
+function loadConvos(){ try{ return JSON.parse(localStorage.getItem("agent_convos")||"[]"); }catch{ return []; } }
+function persistConvos(){ localStorage.setItem("agent_convos", JSON.stringify(convos)); }
+let convos = loadConvos();
+let currentId = null;
+
+function newConvo(){
+  const c = { id: Date.now().toString(36), title: "محادثة جديدة", messages: [] };
+  convos.unshift(c); currentId = c.id; persistConvos(); renderConvos(); renderMessages();
+}
+function currentConvo(){ return convos.find(c => c.id === currentId); }
+function deleteConvo(id){
+  convos = convos.filter(c => c.id !== id); persistConvos();
+  if(currentId === id){ currentId = convos[0]?.id || null; if(!currentId) newConvo(); }
+  renderConvos(); renderMessages();
+}
+
+/* =========================================================================
+   Agent tools (client-side)
+   ========================================================================= */
+// If a local agent server is running, route network tools through it (NO CORS limits).
+// لو السيرفر المحلي شغال، نمرّر أدوات النت من خلاله بدون أي قيود.
+const SERVER_BASE = (location.protocol === "http:" || location.protocol === "https:")
+  ? location.origin.replace(/\/web\/?$/, "")
+  : "http://localhost:8000";
+let SERVER_OK = false;
+async function pingServer(){
+  try{
+    const r = await fetch(SERVER_BASE + "/api/info", {method:"GET"});
+    SERVER_OK = r.ok;
+  }catch{ SERVER_OK = false; }
+  return SERVER_OK;
+}
+async function serverTool(name, args){
+  const r = await fetch(SERVER_BASE + "/api/tool", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({name, arguments:args})
+  });
+  if(!r.ok) throw new Error("server tool "+r.status);
+  const d = await r.json();
+  return d.result;
+}
+
+const TOOLS = {
+  calculator: {
+    schema: { name:"calculator",
+      description:"Evaluate a math expression. Supports + - * / ** % and Math functions (sqrt, sin, log, pi...).",
+      parameters:{ type:"object", properties:{ expression:{type:"string"} }, required:["expression"] } },
+    run: ({expression}) => {
+      const expr = String(expression).replace(/\^/g,"**");
+      if(!/^[-+*/%().,0-9eE\s a-zA-Z_]+$/.test(expr)) throw new Error("invalid characters");
+      // expose Math.* names
+      const names = Object.getOwnPropertyNames(Math);
+      const vals = names.map(n => Math[n]);
+      // eslint-disable-next-line no-new-func
+      const fn = new Function(...names, "return ("+expr+");");
+      const r = fn(...vals);
+      if(typeof r !== "number" || !isFinite(r)) throw new Error("not a finite number");
+      return String(r);
+    }
+  },
+  run_js: {
+    schema: { name:"run_js",
+      description:"Execute a short JavaScript snippet and return what it logs via console.log / its return value.",
+      parameters:{ type:"object", properties:{ code:{type:"string"} }, required:["code"] } },
+    run: ({code}) => {
+      const logs = [];
+      const sandboxConsole = { log:(...a)=>logs.push(a.map(x=> typeof x==="object"? JSON.stringify(x): String(x)).join(" ")) };
+      // eslint-disable-next-line no-new-func
+      const fn = new Function("console","Math","JSON", code);
+      const ret = fn(sandboxConsole, Math, JSON);
+      let out = logs.join("\n");
+      if(ret !== undefined) out += (out? "\n":"") + "=> " + (typeof ret==="object"? JSON.stringify(ret): String(ret));
+      return out || "(no output)";
+    }
+  },
+  write_file: {
+    schema: { name:"write_file",
+      description:"Save a text file in the browser's virtual workspace (localStorage).",
+      parameters:{ type:"object", properties:{ path:{type:"string"}, content:{type:"string"} }, required:["path","content"] } },
+    run: ({path,content}) => { const fs = vfsLoad(); fs[path]=content; vfsSave(fs); return `Wrote ${content.length} chars to ${path}`; }
+  },
+  read_file: {
+    schema: { name:"read_file", description:"Read a text file from the browser virtual workspace.",
+      parameters:{ type:"object", properties:{ path:{type:"string"} }, required:["path"] } },
+    run: ({path}) => { const fs = vfsLoad(); if(!(path in fs)) throw new Error("file not found: "+path); return fs[path]; }
+  },
+  list_files: {
+    schema: { name:"list_files", description:"List files in the browser virtual workspace.",
+      parameters:{ type:"object", properties:{} } },
+    run: () => { const fs = vfsLoad(); const k = Object.keys(fs); return k.length? k.join("\n") : "(empty)"; }
+  },
+  fetch_url: {
+    schema: { name:"fetch_url",
+      description:"Fetch text content of any public URL. Uses local server if available (no limits), else a public proxy.",
+      parameters:{ type:"object", properties:{ url:{type:"string"}, max_chars:{type:"integer"} }, required:["url"] } },
+    run: async ({url, max_chars=4000}) => {
+      const strip = (h)=> h.replace(/<(script|style)[\s\S]*?<\/\1>/gi," ").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim();
+      // 1) Prefer local server (zero CORS limits)
+      if(SERVER_OK){ try{ return String(await serverTool("fetch_url",{url,max_chars})); }catch{} }
+      // 2) Direct fetch
+      try { const r = await fetch(url); const t = await r.text(); return strip(t).slice(0,max_chars); } catch(e){}
+      // 3) Public CORS proxy fallback (best-effort)
+      const prox = "https://r.jina.ai/" + url;
+      const r2 = await fetch(prox); const t2 = await r2.text(); return t2.slice(0,max_chars);
+    }
+  },
+  web_search: {
+    schema: { name:"web_search",
+      description:"Search the web and return top results (titles, links, snippets). Uses local server if available (no limits).",
+      parameters:{ type:"object", properties:{ query:{type:"string"}, num:{type:"integer"} }, required:["query"] } },
+    run: async ({query, num=5}) => {
+      // 1) Prefer local server — real, unrestricted search
+      if(SERVER_OK){ try{ return String(await serverTool("web_search",{query,num})); }catch{} }
+      // 2) Fallback: DuckDuckGo Instant Answer API (CORS-enabled, limited)
+      try{
+        const r = await fetch("https://api.duckduckgo.com/?format=json&no_html=1&q="+encodeURIComponent(query));
+        const d = await r.json();
+        const out = [];
+        if(d.AbstractText) out.push("• "+d.AbstractText+" ("+(d.AbstractURL||"")+")");
+        for(const t of (d.RelatedTopics||[])){
+          if(t.Text && t.FirstURL){ out.push("• "+t.Text+"\n  "+t.FirstURL); }
+          if(out.length>=num) break;
+        }
+        return out.length? out.join("\n") :
+          "بحث محدود من المتصفح. شغّل السيرفر المحلي (backend) للبحث الكامل بدون قيود.";
+      }catch(e){
+        return "تعذّر البحث من المتصفح بسبب قيود CORS. شغّل السيرفر المحلي (backend) للبحث بدون قيود.";
+      }
+    }
+  },
+};
+function vfsLoad(){ try{ return JSON.parse(localStorage.getItem("agent_vfs")||"{}"); }catch{ return {}; } }
+function vfsSave(fs){ localStorage.setItem("agent_vfs", JSON.stringify(fs)); }
+function toolSchemas(){ return Object.values(TOOLS).map(t=>t.schema); }
+
+/* =========================================================================
+   LLM providers (browser fetch, with streaming where possible)
+   ========================================================================= */
+const SYSTEM_PROMPT =
+  "You are a capable, friendly AI agent running in the user's browser. You can use tools: "+
+  "calculator, run_js, read_file/write_file/list_files (virtual workspace), and fetch_url. "+
+  "Think step by step, call tools when useful, then give a clear final answer in the user's "+
+  "language (Arabic or English). Use markdown for code.";
+
+function openaiMultimodal(messages){
+  // Convert our {role:'user', content, images:[]} into OpenAI content-parts
+  return messages.map(m=>{
+    if(m.role==="user" && m.images && m.images.length){
+      const parts=[{type:"text", text:m.content||""}];
+      for(const url of m.images) parts.push({type:"image_url", image_url:{url}});
+      return {role:"user", content:parts};
+    }
+    const {images, ...rest} = m; return rest;
+  });
+}
+
+async function callOpenAI(messages, useTools, onDelta){
+  if(!settings.openaiKey) throw new Error("مفيش OpenAI API key. افتح الإعدادات وحطه.");
+  const body = { model: settings.openaiModel||"gpt-4o-mini", messages: openaiMultimodal(messages), stream: !!onDelta };
+  if(useTools) body.tools = toolSchemas().map(s=>({type:"function", function:s}));
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method:"POST",
+    headers:{ "Authorization":"Bearer "+settings.openaiKey, "Content-Type":"application/json" },
+    body: JSON.stringify(body)
+  });
+  if(!res.ok){ throw new Error("OpenAI "+res.status+": "+(await res.text()).slice(0,300)); }
+
+  if(onDelta && body.stream){
+    return await readOpenAIStream(res, onDelta);
+  }
+  const data = await res.json();
+  const m = data.choices[0].message;
+  return normalizeOpenAI(m);
+}
+
+function normalizeOpenAI(m){
+  const tool_calls = (m.tool_calls||[]).map(tc=>({ id:tc.id, name:tc.function.name,
+    arguments: safeParse(tc.function.arguments) }));
+  return { text:m.content||null, tool_calls };
+}
+
+async function readOpenAIStream(res, onDelta){
+  const reader = res.body.getReader(); const dec = new TextDecoder();
+  let buf="", text=""; const toolAcc = {};
+  while(true){
+    const {done,value} = await reader.read(); if(done) break;
+    buf += dec.decode(value,{stream:true});
+    const lines = buf.split("\n"); buf = lines.pop();
+    for(const line of lines){
+      const s = line.trim(); if(!s.startsWith("data:")) continue;
+      const payload = s.slice(5).trim(); if(payload==="[DONE]") continue;
+      let j; try{ j=JSON.parse(payload); }catch{ continue; }
+      const d = j.choices[0].delta;
+      if(d.content){ text+=d.content; onDelta(text); }
+      for(const tc of d.tool_calls||[]){
+        const i = tc.index;
+        toolAcc[i] = toolAcc[i] || { id:tc.id||("call_"+i), name:"", args:"" };
+        if(tc.id) toolAcc[i].id = tc.id;
+        if(tc.function?.name) toolAcc[i].name += tc.function.name;
+        if(tc.function?.arguments) toolAcc[i].args += tc.function.arguments;
+      }
+    }
+  }
+  const tool_calls = Object.values(toolAcc).map(t=>({ id:t.id, name:t.name, arguments:safeParse(t.args) }));
+  return { text: text||null, tool_calls };
+}
+
+async function callAnthropic(messages, useTools, onDelta){
+  if(!settings.anthKey) throw new Error("مفيش Anthropic API key. افتح الإعدادات وحطه.");
+  const {system, conv} = toAnthropic(messages);
+  const body = { model: settings.anthModel||"claude-3-5-sonnet-20241022", max_tokens:4096, messages:conv, stream:!!onDelta };
+  if(system) body.system = system;
+  if(useTools) body.tools = toolSchemas().map(s=>({ name:s.name, description:s.description, input_schema:s.parameters }));
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method:"POST",
+    headers:{ "x-api-key":settings.anthKey, "anthropic-version":"2023-06-01",
+      "anthropic-dangerous-direct-browser-access":"true", "Content-Type":"application/json" },
+    body: JSON.stringify(body)
+  });
+  if(!res.ok){ throw new Error("Anthropic "+res.status+": "+(await res.text()).slice(0,300)); }
+  if(onDelta && body.stream) return await readAnthropicStream(res, onDelta);
+  const data = await res.json();
+  return normalizeAnthropic(data);
+}
+
+function normalizeAnthropic(data){
+  let text=""; const tool_calls=[];
+  for(const b of data.content||[]){
+    if(b.type==="text") text+=b.text;
+    else if(b.type==="tool_use") tool_calls.push({ id:b.id, name:b.name, arguments:b.input });
+  }
+  return { text:text||null, tool_calls };
+}
+
+async function readAnthropicStream(res, onDelta){
+  const reader=res.body.getReader(); const dec=new TextDecoder();
+  let buf="", text=""; const tool_calls=[]; let cur=null, curJson="";
+  while(true){
+    const {done,value}=await reader.read(); if(done) break;
+    buf+=dec.decode(value,{stream:true});
+    const lines=buf.split("\n"); buf=lines.pop();
+    for(const line of lines){
+      const s=line.trim(); if(!s.startsWith("data:")) continue;
+      let j; try{ j=JSON.parse(s.slice(5).trim()); }catch{ continue; }
+      if(j.type==="content_block_start" && j.content_block?.type==="tool_use"){
+        cur={ id:j.content_block.id, name:j.content_block.name }; curJson="";
+      } else if(j.type==="content_block_delta"){
+        if(j.delta.type==="text_delta"){ text+=j.delta.text; onDelta(text); }
+        else if(j.delta.type==="input_json_delta"){ curJson+=j.delta.partial_json; }
+      } else if(j.type==="content_block_stop" && cur){
+        tool_calls.push({ id:cur.id, name:cur.name, arguments:safeParse(curJson||"{}") }); cur=null;
+      }
+    }
+  }
+  return { text:text||null, tool_calls };
+}
+
+function toAnthropic(messages){
+  let system=null; const conv=[];
+  for(const m of messages){
+    if(m.role==="system"){ system=m.content; continue; }
+    if(m.role==="tool"){ conv.push({ role:"user", content:[{ type:"tool_result", tool_use_id:m.tool_call_id, content:m.content }] }); continue; }
+    if(m.role==="assistant" && m.tool_calls){
+      const blocks=[]; if(m.content) blocks.push({type:"text",text:m.content});
+      for(const tc of m.tool_calls) blocks.push({ type:"tool_use", id:tc.id, name:tc.function.name, input:safeParse(tc.function.arguments) });
+      conv.push({ role:"assistant", content:blocks }); continue;
+    }
+    if(m.role==="user" && m.images && m.images.length){
+      const blocks=[];
+      for(const url of m.images){
+        const mt=(url.match(/^data:([^;]+);base64,/)||[])[1]||"image/png";
+        const data=url.split(",")[1]||"";
+        blocks.push({type:"image", source:{type:"base64", media_type:mt, data}});
+      }
+      if(m.content) blocks.push({type:"text", text:m.content});
+      conv.push({ role:"user", content:blocks }); continue;
+    }
+    conv.push({ role:m.role, content:m.content });
+  }
+  return {system, conv};
+}
+
+async function callOllama(messages, useTools, onDelta){
+  const url = (settings.ollamaUrl||"http://localhost:11434")+"/api/chat";
+  const body = { model: settings.ollamaModel||"llama3.1", messages, stream:false };
+  if(useTools) body.tools = toolSchemas().map(s=>({type:"function",function:s}));
+  const res = await fetch(url, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) });
+  if(!res.ok) throw new Error("Ollama "+res.status+": "+(await res.text()).slice(0,200));
+  const data = await res.json(); const m = data.message||{};
+  if(onDelta && m.content) onDelta(m.content);
+  const tool_calls = (m.tool_calls||[]).map(tc=>({ id:tc.function?.name||"call", name:tc.function?.name,
+    arguments: typeof tc.function?.arguments==="string"? safeParse(tc.function.arguments): (tc.function?.arguments||{}) }));
+  return { text:m.content||null, tool_calls };
+}
+
+async function callDemo(messages, useTools, onDelta){
+  const last = [...messages].reverse().find(m=>m.role==="user")?.content || "";
+  // tiny offline "smart" demo: try calculator if it looks like math
+  const text =
+    "🟡 **وضع تجريبي (Demo)** — مفيش مفتاح API.\n\n"+
+    "أنت قلت: «"+last+"»\n\n"+
+    "علشان الذكاء الحقيقي، افتح ⚙️ الإعدادات وحط مفتاح OpenAI أو Anthropic، "+
+    "أو شغّل Ollama محليًا واختاره من القائمة.";
+  if(onDelta){ for(let i=1;i<=text.length;i+=3){ onDelta(text.slice(0,i)); await sleep(8); } }
+  return { text, tool_calls:[] };
+}
+
+function providerCall(){
+  switch(settings.provider){
+    case "openai": return callOpenAI;
+    case "anthropic": return callAnthropic;
+    case "ollama": return callOllama;
+    default: return callDemo;
+  }
+}
+
+/* =========================================================================
+   Agent loop
+   ========================================================================= */
+const MAX_STEPS = 6;
+
+function buildAssistantMsg(text, tool_calls){
+  const msg = { role:"assistant", content:text||"" };
+  if(tool_calls?.length){
+    msg.tool_calls = tool_calls.map(tc=>({ id:tc.id, type:"function",
+      function:{ name:tc.name, arguments: JSON.stringify(tc.arguments||{}) } }));
+  }
+  return msg;
+}
+
+async function runAgent(history, useTools, onDelta, onTool){
+  const call = providerCall();
+  const messages = [{role:"system",content:SYSTEM_PROMPT}, ...history];
+  const trace = [];
+  for(let step=0; step<MAX_STEPS; step++){
+    const stream = step===0 ? onDelta : null; // stream only the visible turns
+    const resp = await call(messages, useTools && settings.provider!=="demo", onDelta);
+    if(!resp.tool_calls || !resp.tool_calls.length){
+      return { reply: resp.text||"", trace };
+    }
+    messages.push(buildAssistantMsg(resp.text, resp.tool_calls));
+    for(const tc of resp.tool_calls){
+      let result;
+      try{
+        const t = TOOLS[tc.name];
+        if(!t) throw new Error("unknown tool: "+tc.name);
+        result = await t.run(tc.arguments||{});
+        if(typeof result!=="string") result = JSON.stringify(result);
+      }catch(e){ result = "[error] "+e.message; }
+      trace.push({ tool:tc.name, arguments:tc.arguments, result:String(result).slice(0,2000) });
+      onTool && onTool(trace);
+      messages.push({ role:"tool", tool_call_id:tc.id, content:String(result) });
+    }
+  }
+  const final = await call(messages, false, onDelta);
+  return { reply: final.text||"(step limit reached)", trace };
+}
+
+/* =========================================================================
+   Rendering
+   ========================================================================= */
+const chatEl = document.getElementById("chat");
+const innerEl = document.getElementById("inner");
+const welcomeEl = document.getElementById("welcome");
+
+function mdToHtml(src){
+  // minimal, safe markdown: escape then apply code/bold/lists
+  let s = src.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  s = s.replace(/```(\w*)\n([\s\S]*?)```/g, (m,lang,code)=>`<pre><code>${code.replace(/\n$/,"")}</code></pre>`);
+  s = s.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+  s = s.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  // lists
+  s = s.replace(/(?:^|\n)((?:\s*[-*] .*(?:\n|$))+)/g, (m,block)=>{
+    const items = block.trim().split("\n").map(l=>l.replace(/^\s*[-*]\s?/,"")).map(t=>`<li>${t}</li>`).join("");
+    return "\n<ul>"+items+"</ul>";
+  });
+  s = s.replace(/(?:^|\n)((?:\s*\d+\. .*(?:\n|$))+)/g, (m,block)=>{
+    const items = block.trim().split("\n").map(l=>l.replace(/^\s*\d+\.\s?/,"")).map(t=>`<li>${t}</li>`).join("");
+    return "\n<ol>"+items+"</ol>";
+  });
+  s = s.split(/\n{2,}/).map(p=> /^\s*<(ul|ol|pre)/.test(p)? p : `<p>${p.replace(/\n/g,"<br>")}</p>`).join("");
+  return s;
+}
+
+function renderMessages(){
+  const c = currentConvo();
+  innerEl.innerHTML = "";
+  if(!c || !c.messages.length){ innerEl.appendChild(welcomeEl); welcomeEl.style.display="block"; return; }
+  for(const m of c.messages){
+    if(m.role==="user") addBubble("user", m.content, null, m.attachments);
+    else if(m.role==="assistant") addBubble("bot", m.content, m.trace);
+  }
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+function addBubble(role, text, trace, atts){
+  const wrap = document.createElement("div");
+  wrap.className = "msg "+(role==="user"?"user":"bot");
+  const avatar = document.createElement("div");
+  avatar.className="avatar"; avatar.textContent = role==="user"?"🧑":"🤖";
+  const bubble = document.createElement("div"); bubble.className="bubble";
+  bubble.innerHTML = role==="user" ? escapeHtml(text||"") : mdToHtml(text||"");
+  if(atts && atts.length){
+    for(const a of atts){
+      if(a.kind==="image"){ const im=document.createElement("img"); im.className="att"; im.src=a.dataUrl; bubble.appendChild(im); }
+      else { const d=document.createElement("div"); d.style.cssText="margin-top:6px;font-size:12px;color:var(--muted)"; d.textContent="📄 "+a.name; bubble.appendChild(d); }
+    }
+  }
+  if(trace && trace.length) bubble.appendChild(traceEl(trace));
+  wrap.appendChild(avatar); wrap.appendChild(bubble); innerEl.appendChild(wrap);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return bubble;
+}
+
+function traceEl(trace){
+  const t = document.createElement("div"); t.className="trace";
+  t.innerHTML = trace.map(s=>`<details><summary>🛠️ ${escapeHtml(s.tool)}(${escapeHtml(JSON.stringify(s.arguments||{}))})</summary><pre>${escapeHtml(s.result)}</pre></details>`).join("");
+  return t;
+}
+
+function renderConvos(){
+  const el = document.getElementById("convos"); el.innerHTML="";
+  for(const c of convos){
+    const d = document.createElement("div");
+    d.className = "convo"+(c.id===currentId?" active":"");
+    d.innerHTML = `<span>💬</span><span class="title">${escapeHtml(c.title)}</span><span class="del">🗑️</span>`;
+    d.addEventListener("click", e=>{
+      if(e.target.classList.contains("del")){ deleteConvo(c.id); return; }
+      currentId=c.id; renderConvos(); renderMessages();
+    });
+    el.appendChild(d);
+  }
+}
+
+/* =========================================================================
+   Helpers
+   ========================================================================= */
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function safeParse(s){ try{ return JSON.parse(s||"{}"); }catch{ return {}; } }
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+/* =========================================================================
+   Wiring
+   ========================================================================= */
+const input = document.getElementById("input");
+const sendBtn = document.getElementById("sendBtn");
+const providerSel = document.getElementById("providerSel");
+const toolsToggle = document.getElementById("toolsToggle");
+const statusBadge = document.getElementById("statusBadge");
+const statusText = document.getElementById("statusText");
+
+function refreshStatus(){
+  providerSel.value = settings.provider;
+  let ready=false, label=settings.provider;
+  if(settings.provider==="openai"){ ready=!!settings.openaiKey; label="OpenAI · "+(settings.openaiModel||""); }
+  else if(settings.provider==="anthropic"){ ready=!!settings.anthKey; label="Claude"; }
+  else if(settings.provider==="ollama"){ ready=true; label="Ollama"; }
+  else { ready=true; label="Demo"; }
+  statusText.textContent = label + (ready? "" : " · (محتاج مفتاح)");
+  statusBadge.classList.toggle("ready", ready);
+}
+
+function autoGrow(){ input.style.height="auto"; input.style.height=Math.min(input.scrollHeight,170)+"px"; }
+input.addEventListener("input", autoGrow);
+input.addEventListener("keydown", e=>{ if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); send(); } });
+sendBtn.addEventListener("click", send);
+document.getElementById("chips").addEventListener("click", e=>{ if(e.target.classList.contains("chip")){ input.value=e.target.textContent; send(); } });
+document.getElementById("newChat").addEventListener("click", newConvo);
+providerSel.addEventListener("change", ()=>{ settings.provider=providerSel.value; saveSettings(settings); refreshStatus(); });
+
+document.getElementById("exportBtn").addEventListener("click", ()=>{
+  const c = currentConvo(); if(!c) return;
+  const md = c.messages.map(m=> (m.role==="user"?"### 🧑 \n":"### 🤖 \n")+m.content).join("\n\n");
+  const blob = new Blob([md], {type:"text/markdown"});
+  const a = document.createElement("a"); a.href=URL.createObjectURL(blob);
+  a.download=(c.title||"chat")+".md"; a.click();
+});
+
+/* Settings modal */
+const overlay = document.getElementById("overlay");
+function openSettings(){
+  document.getElementById("setProvider").value = settings.provider;
+  document.getElementById("setOpenAIKey").value = settings.openaiKey;
+  document.getElementById("setOpenAIModel").value = settings.openaiModel;
+  document.getElementById("setAnthKey").value = settings.anthKey;
+  document.getElementById("setAnthModel").value = settings.anthModel;
+  document.getElementById("setOllamaUrl").value = settings.ollamaUrl;
+  document.getElementById("setOllamaModel").value = settings.ollamaModel;
+  overlay.classList.add("open");
+}
+document.getElementById("openSettings").addEventListener("click", openSettings);
+document.getElementById("closeSettings").addEventListener("click", ()=>overlay.classList.remove("open"));
+overlay.addEventListener("click", e=>{ if(e.target===overlay) overlay.classList.remove("open"); });
+document.getElementById("saveSettings").addEventListener("click", ()=>{
+  settings = {
+    provider: document.getElementById("setProvider").value,
+    openaiKey: document.getElementById("setOpenAIKey").value.trim(),
+    openaiModel: document.getElementById("setOpenAIModel").value.trim()||"gpt-4o-mini",
+    anthKey: document.getElementById("setAnthKey").value.trim(),
+    anthModel: document.getElementById("setAnthModel").value.trim()||"claude-3-5-sonnet-20241022",
+    ollamaUrl: document.getElementById("setOllamaUrl").value.trim()||"http://localhost:11434",
+    ollamaModel: document.getElementById("setOllamaModel").value.trim()||"llama3.1",
+  };
+  saveSettings(settings); overlay.classList.remove("open"); refreshStatus();
+});
+
+/* Send flow */
+let busy = false;
+async function send(){
+  const text = input.value.trim();
+  if((!text && !attachments.length) || busy) return;
+  busy = true; sendBtn.disabled = true;
+  input.value=""; autoGrow();
+  if(!currentConvo()) newConvo();
+  const c = currentConvo();
+
+  const atts = attachments.slice();   // snapshot
+  attachments = []; renderAttachBar();
+
+  welcomeEl.style.display="none";
+  addBubble("user", text, null, atts);
+  c.messages.push({ role:"user", content:text, attachments:atts });
+  if(c.title==="محادثة جديدة"){ c.title = (text||atts[0]?.name||"ملف").slice(0,40); renderConvos(); }
+  persistConvos();
+
+  // bot bubble with typing
+  const bubble = addBubble("bot", "");
+  bubble.innerHTML = `<span class="typing"><span></span><span></span><span></span></span>`;
+  let traceContainer = null;
+
+  const history = c.messages.map(m=>{
+    if(m.role!=="user") return {role:"assistant", content:m.content};
+    const ats = m.attachments||[];
+    if(!ats.length) return {role:"user", content:m.content};
+    // Multimodal: images as image parts, text files appended to the prompt
+    let textPart = m.content || "";
+    const imgs = [];
+    for(const a of ats){
+      if(a.kind==="image") imgs.push(a.dataUrl);
+      else textPart += `\n\n--- ملف: ${a.name} ---\n${a.text}`;
+    }
+    return {role:"user", content:textPart, images:imgs};
+  });
+
+  try{
+    const result = await runAgent(
+      history,
+      toolsToggle.checked,
+      (partial)=>{ bubble.innerHTML = mdToHtml(partial); if(traceContainer) bubble.appendChild(traceContainer); chatEl.scrollTop=chatEl.scrollHeight; },
+      (trace)=>{ if(traceContainer) traceContainer.remove(); traceContainer = traceEl(trace); bubble.appendChild(traceContainer); }
+    );
+    bubble.innerHTML = mdToHtml(result.reply||"(فاضي)");
+    if(result.trace && result.trace.length) bubble.appendChild(traceEl(result.trace));
+    c.messages.push({ role:"assistant", content:result.reply, trace:result.trace });
+    persistConvos();
+    speak(result.reply||"");
+  }catch(e){
+    bubble.innerHTML = `<span style="color:var(--err)">⚠️ ${escapeHtml(e.message)}</span>`;
+    c.messages.push({ role:"assistant", content:"⚠️ "+e.message });
+    persistConvos();
+  }finally{
+    busy=false; sendBtn.disabled=false; input.focus();
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+}
+
+/* =========================================================================
+   Attachments (files + images)  ·  إرفاق ملفات وصور
+   ========================================================================= */
+let attachments = []; // {name, type, kind:'image'|'text', dataUrl?, text?}
+const fileInput = document.getElementById("fileInput");
+const attachBar = document.getElementById("attachBar");
+
+document.getElementById("attachBtn").addEventListener("click", ()=> fileInput.click());
+fileInput.addEventListener("change", async ()=>{
+  for(const f of fileInput.files){
+    if(f.type.startsWith("image/")){
+      const dataUrl = await fileToDataURL(f);
+      attachments.push({ name:f.name, type:f.type, kind:"image", dataUrl });
+    } else {
+      const text = await f.text();
+      attachments.push({ name:f.name, type:f.type||"text/plain", kind:"text", text: text.slice(0,20000) });
+    }
+  }
+  fileInput.value = "";
+  renderAttachBar();
+});
+
+function fileToDataURL(file){
+  return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); });
+}
+function renderAttachBar(){
+  attachBar.innerHTML = attachments.map((a,i)=>{
+    const thumb = a.kind==="image" ? `<img src="${a.dataUrl}">` : "📄";
+    return `<span class="attach-chip">${thumb}<span>${escapeHtml(a.name)}</span><span class="x" data-i="${i}">✕</span></span>`;
+  }).join("");
+  attachBar.querySelectorAll(".x").forEach(x=> x.addEventListener("click", e=>{
+    attachments.splice(+e.target.dataset.i,1); renderAttachBar();
+  }));
+}
+
+/* =========================================================================
+   Voice input (mic)  ·  إدخال صوتي
+   Uses Web Speech API if available (instant, free), else records audio and
+   sends to the server's /api/transcribe (Whisper via OpenAI key).
+   ========================================================================= */
+const micBtn = document.getElementById("micBtn");
+let mediaRecorder=null, recChunks=[], recognizing=false, speechRec=null;
+
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+micBtn.addEventListener("click", async ()=>{
+  // Prefer built-in Web Speech API (no key, real-time)
+  if(SpeechRec && !mediaRecorder){
+    if(recognizing){ speechRec && speechRec.stop(); return; }
+    speechRec = new SpeechRec();
+    speechRec.lang = "ar-EG";       // عربي مصري؛ بيفهم إنجليزي كمان غالبًا
+    speechRec.interimResults = true;
+    speechRec.continuous = false;
+    let finalText = "";
+    speechRec.onstart = ()=>{ recognizing=true; micBtn.classList.add("recording"); };
+    speechRec.onresult = (e)=>{
+      let interim="";
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        const t=e.results[i][0].transcript;
+        if(e.results[i].isFinal) finalText+=t; else interim+=t;
+      }
+      input.value = (finalText+interim).trim(); autoGrow();
+    };
+    speechRec.onerror = ()=>{ recognizing=false; micBtn.classList.remove("recording"); };
+    speechRec.onend = ()=>{ recognizing=false; micBtn.classList.remove("recording"); input.focus(); };
+    speechRec.start();
+    return;
+  }
+  // Fallback: record audio → send to server Whisper
+  if(!mediaRecorder){
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+      mediaRecorder = new MediaRecorder(stream);
+      recChunks = [];
+      mediaRecorder.ondataavailable = e=> recChunks.push(e.data);
+      mediaRecorder.onstop = async ()=>{
+        micBtn.classList.remove("recording");
+        const blob = new Blob(recChunks, {type:"audio/webm"});
+        stream.getTracks().forEach(t=>t.stop());
+        mediaRecorder = null;
+        await transcribeBlob(blob);
+      };
+      mediaRecorder.start();
+      micBtn.classList.add("recording");
+    }catch(e){ alert("متعذّر الوصول للميكروفون: "+e.message); }
+  } else {
+    mediaRecorder.stop();
+  }
+});
+
+async function transcribeBlob(blob){
+  // Try server (Whisper) first — best quality, supports Arabic
+  if(SERVER_OK){
+    try{
+      const fd = new FormData(); fd.append("audio", blob, "voice.webm");
+      const r = await fetch(SERVER_BASE+"/api/transcribe", {method:"POST", body:fd});
+      if(r.ok){ const d=await r.json(); if(d.text){ input.value=d.text; autoGrow(); return; } }
+    }catch(e){}
+  }
+  // Or call OpenAI Whisper directly from browser if key present
+  if(settings.openaiKey){
+    try{
+      const fd=new FormData(); fd.append("file", blob, "voice.webm"); fd.append("model","whisper-1");
+      const r=await fetch("https://api.openai.com/v1/audio/transcriptions",{
+        method:"POST", headers:{"Authorization":"Bearer "+settings.openaiKey}, body:fd });
+      if(r.ok){ const d=await r.json(); input.value=d.text||""; autoGrow(); return; }
+    }catch(e){}
+  }
+  alert("التفريغ الصوتي محتاج إما السيرفر شغّال أو مفتاح OpenAI. جرّب متصفح Chrome للتعرّف الفوري المجاني.");
+}
+
+/* =========================================================================
+   Voice output (TTS)  ·  نطق رد الوكيل
+   ========================================================================= */
+function speak(text){
+  if(!document.getElementById("speakToggle").checked) return;
+  if(!("speechSynthesis" in window)) return;
+  const clean = text.replace(/```[\s\S]*?```/g,"").replace(/[*_`#>]/g,"").slice(0,600);
+  if(!clean.trim()) return;
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(clean);
+  const isAr = /[\u0600-\u06FF]/.test(clean);
+  u.lang = isAr ? "ar-SA" : "en-US";
+  window.speechSynthesis.speak(u);
+}
+
+/* Init */
+if(!convos.length) newConvo(); else { currentId = convos[0].id; }
+renderConvos(); renderMessages(); refreshStatus();
+
+// Detect a local backend server → unlocks unrestricted web_search / fetch_url
+pingServer().then(ok=>{
+  if(ok){
+    const b = document.getElementById("statusBadge");
+    b.title = "متصل بالسيرفر المحلي — أدوات النت بدون قيود ✅";
+    const tag = document.createElement("span");
+    tag.textContent = " · 🌐 بحث كامل";
+    tag.style.color = "var(--ok)";
+    document.getElementById("statusText").appendChild(tag);
+  }
+});
+</script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a03c48283fd8e281',t:'MTc4MDEyODgzMA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"1954b47c125f43f8b4338b3c4f804e4f","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
